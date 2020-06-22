@@ -1,13 +1,10 @@
 use super::CrateTrait;
 use crate::Workspace;
-use failure::Error;
-use flate2::read::GzDecoder;
+use failure::{Error, ResultExt};
 use log::info;
-use remove_dir_all::remove_dir_all;
 use std::fs::File;
-use std::io::{BufReader, BufWriter, Read};
+use std::io::BufWriter;
 use std::path::{Path, PathBuf};
-use tar::Archive;
 
 static CRATES_ROOT: &str = "https://static.crates.io/crates";
 
@@ -68,27 +65,18 @@ impl CrateTrait for CratesIOCrate {
     }
 
     fn copy_source_to(&self, workspace: &Workspace, dest: &Path) -> Result<(), Error> {
-        let cached = self.cache_path(workspace);
-        let mut file = File::open(cached)?;
-        let mut tar = Archive::new(GzDecoder::new(BufReader::new(&mut file)));
-
         info!(
             "extracting crate {} {} into {}",
             self.name,
             self.version,
             dest.display()
         );
-        if let Err(err) = unpack_without_first_dir(&mut tar, dest) {
-            let _ = remove_dir_all(dest);
-            Err(err
-                .context(format!(
-                    "unable to download {} version {}",
-                    self.name, self.version
-                ))
-                .into())
-        } else {
-            Ok(())
-        }
+        super::archive::unpack(&self.cache_path(workspace), dest)
+            .context(format!(
+                "failed to unpack {} {}",
+                self.name, self.version
+            ))?;
+        Ok(())
     }
 }
 
@@ -96,26 +84,4 @@ impl std::fmt::Display for CratesIOCrate {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "crates.io crate {} {}", self.name, self.version)
     }
-}
-
-fn unpack_without_first_dir<R: Read>(archive: &mut Archive<R>, path: &Path) -> Result<(), Error> {
-    let entries = archive.entries()?;
-    for entry in entries {
-        let mut entry = entry?;
-        let relpath = {
-            let path = entry.path();
-            let path = path?;
-            path.into_owned()
-        };
-        let mut components = relpath.components();
-        // Throw away the first path component
-        components.next();
-        let full_path = path.join(&components.as_path());
-        if let Some(parent) = full_path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        entry.unpack(&full_path)?;
-    }
-
-    Ok(())
 }

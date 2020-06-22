@@ -1,6 +1,8 @@
 mod cratesio;
 mod git;
 mod local;
+mod archive;
+mod registry;
 
 use crate::Workspace;
 use failure::Error;
@@ -18,6 +20,7 @@ enum CrateType {
     CratesIO(cratesio::CratesIOCrate),
     Git(git::GitRepo),
     Local(local::Local),
+    Registry(registry::RegistryCrate),
 }
 
 /// A Rust crate that can be used with rustwide.
@@ -28,6 +31,13 @@ impl Crate {
     pub fn crates_io(name: &str, version: &str) -> Self {
         Crate(CrateType::CratesIO(cratesio::CratesIOCrate::new(
             name, version,
+        )))
+    }
+
+    /// Load a crate from a registry specified by index url.
+    pub fn registry(name: &str, version: &str, index: &str) -> Self {
+        Crate(CrateType::Registry(registry::RegistryCrate::new(
+            name, version, index,
         )))
     }
 
@@ -77,6 +87,7 @@ impl Crate {
     fn as_trait(&self) -> &dyn CrateTrait {
         match &self.0 {
             CrateType::CratesIO(krate) => krate,
+            CrateType::Registry(krate) => krate,
             CrateType::Git(repo) => repo,
             CrateType::Local(local) => local,
         }
